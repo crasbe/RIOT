@@ -20,14 +20,12 @@
 #ifndef CPU_H
 #define CPU_H
 
-#include <stdio.h>
+#include <stdint.h>
 
 #include <msp430.h>
-#include "board.h"
 
 #include "sched.h"
 #include "thread.h"
-#include "cpu_conf.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -37,6 +35,11 @@ extern "C" {
  * @brief   Wordsize in bit for MSP430 platforms
  */
 #define WORDSIZE 16
+
+/**
+ * @brief   MSP430 has power management support
+ */
+#define PROVIDES_PM_SET_LOWEST
 
 /**
  * @brief   Macro for defining interrupt service routines
@@ -96,6 +99,14 @@ static inline void __attribute__((always_inline)) __restore_context(void)
  */
 static inline void __attribute__((always_inline)) __enter_isr(void)
 {
+    /* modify state register pushed to stack to not got to power saving
+     * mode right again */
+    __asm__ volatile(
+        "bic %[mask], 0(SP)"            "\n\t"
+        : /* no outputs */
+        : [mask]    "i"(CPUOFF | SCG0 | SCG1 | OSCOFF)
+        : "memory"
+    );
     extern char __stack;    /* defined by linker script to end of RAM */
     __save_context();
     __asm__("mov.w %0,r1" : : "i"(&__stack));
@@ -118,12 +129,11 @@ static inline void __attribute__((always_inline)) __exit_isr(void)
 
 /**
  * @brief   Returns the last instruction's address
- *
- * @todo:   Not supported
  */
+__attribute__((always_inline))
 static inline uintptr_t cpu_get_caller_pc(void)
 {
-    return 0;
+    return (uintptr_t)__builtin_return_address(0);
 }
 
 #ifdef __cplusplus

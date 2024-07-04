@@ -54,14 +54,6 @@
 #define VFS_H
 
 #include <stdint.h>
-/* The stdatomic.h in GCC gives compilation errors with C++
- * see: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=60932
- */
-#ifdef __cplusplus
-#include "c11_atomics_compat.hpp"
-#else
-#include <stdatomic.h> /* for atomic_int */
-#endif
 #include <sys/stat.h> /* for struct stat */
 #include <sys/types.h> /* for off_t etc. */
 #include <sys/statvfs.h> /* for struct statvfs */
@@ -69,7 +61,11 @@
 #include "sched.h"
 #include "clist.h"
 #include "iolist.h"
+#include "macros/utils.h"
 #include "mtd.h"
+#ifdef MODULE_NANOCOAP_FS
+#include "net/sock/config.h"
+#endif
 #include "xfa.h"
 
 #ifdef __cplusplus
@@ -83,20 +79,11 @@ extern "C" {
 #endif
 
 /**
- * @brief   MAX functions for internal use
- * @{
+ * @brief   MAX6 Function to get the largest of 6 values
  */
-#ifndef _MAX
-#define _MAX(a, b) ((a) > (b) ? (a) : (b))
+#ifndef MAX6
+#define MAX6(a, b, c, d, e, f) MAX(MAX(MAX(MAX((a), (b)), MAX((c), (d))), (e)), (f))
 #endif
-
-#ifndef MAX5
-/**
- * @brief   MAX5 Function to get the largest of 5 values
- */
-#define MAX5(a, b, c, d, e) _MAX(_MAX(_MAX((a), (b)), _MAX((c),(d))), (e))
-#endif
-/** @} */
 
 /**
  * @brief   VFS parameters for FAT
@@ -216,6 +203,21 @@ extern "C" {
 #endif
 /** @} */
 
+/**
+ * @brief   VFS parameters for nanoCoAP FS
+ * @{
+ */
+#if defined(MODULE_NANOCOAP_FS) || DOXYGEN
+#  define NANOCOAP_FS_VFS_DIR_BUFFER_SIZE  \
+          (4 + CONFIG_SOCK_URLPATH_MAXLEN) /**< sizeof(nanocoap_fs_dir_t) */
+#  define NANOCOAP_FS_VFS_FILE_BUFFER_SIZE \
+          (4 + CONFIG_SOCK_URLPATH_MAXLEN) /**< sizeof(nanocoap_fs_file_t) */
+#else
+#  define NANOCOAP_FS_VFS_DIR_BUFFER_SIZE   (1)
+#  define NANOCOAP_FS_VFS_FILE_BUFFER_SIZE  (1)
+#endif
+/** @} */
+
 #ifndef VFS_MAX_OPEN_FILES
 /**
  * @brief Maximum number of simultaneous open files
@@ -251,11 +253,12 @@ extern "C" {
  * @attention Put the check in the public header file (.h), do not put the check in the
  * implementation (.c) file.
  */
-#define VFS_DIR_BUFFER_SIZE MAX5(FATFS_VFS_DIR_BUFFER_SIZE,     \
-                                 LITTLEFS_VFS_DIR_BUFFER_SIZE,  \
-                                 LITTLEFS2_VFS_DIR_BUFFER_SIZE, \
-                                 SPIFFS_VFS_DIR_BUFFER_SIZE,    \
-                                 LWEXT4_VFS_DIR_BUFFER_SIZE     \
+#define VFS_DIR_BUFFER_SIZE MAX6(FATFS_VFS_DIR_BUFFER_SIZE,      \
+                                 LITTLEFS_VFS_DIR_BUFFER_SIZE,   \
+                                 LITTLEFS2_VFS_DIR_BUFFER_SIZE,  \
+                                 SPIFFS_VFS_DIR_BUFFER_SIZE,     \
+                                 LWEXT4_VFS_DIR_BUFFER_SIZE,     \
+                                 NANOCOAP_FS_VFS_DIR_BUFFER_SIZE \
                                 )
 #endif
 
@@ -279,11 +282,12 @@ extern "C" {
  * @attention Put the check in the public header file (.h), do not put the check in the
  * implementation (.c) file.
  */
-#define VFS_FILE_BUFFER_SIZE MAX5(FATFS_VFS_FILE_BUFFER_SIZE,    \
-                                  LITTLEFS_VFS_FILE_BUFFER_SIZE, \
-                                  LITTLEFS2_VFS_FILE_BUFFER_SIZE,\
-                                  SPIFFS_VFS_FILE_BUFFER_SIZE,   \
-                                  LWEXT4_VFS_FILE_BUFFER_SIZE    \
+#define VFS_FILE_BUFFER_SIZE MAX6(FATFS_VFS_FILE_BUFFER_SIZE,      \
+                                  LITTLEFS_VFS_FILE_BUFFER_SIZE,   \
+                                  LITTLEFS2_VFS_FILE_BUFFER_SIZE,  \
+                                  SPIFFS_VFS_FILE_BUFFER_SIZE,     \
+                                  LWEXT4_VFS_FILE_BUFFER_SIZE,     \
+                                  NANOCOAP_FS_VFS_FILE_BUFFER_SIZE \
                                  )
 #endif
 
@@ -383,7 +387,7 @@ struct vfs_mount_struct {
     const vfs_file_system_t *fs; /**< The file system driver for the mount point */
     const char *mount_point;     /**< Mount point, e.g. "/mnt/cdrom" */
     size_t mount_point_len;      /**< Length of mount_point string (set by vfs_mount) */
-    atomic_int open_files;       /**< Number of currently open files and directories */
+    uint16_t open_files;         /**< Number of currently open files and directories */
     void *private_data;          /**< File system driver private data, implementation defined */
 };
 
@@ -848,6 +852,20 @@ int vfs_open(const char *name, int flags, mode_t mode);
  * vfs_file_to_buffer function can be used.
  */
 ssize_t vfs_read(int fd, void *dest, size_t count);
+
+/**
+ * @brief Read a line from an open text file
+ *
+ * Reads from a file until a `\r` or `\n` character is found.
+ *
+ * @param[in]  fd       fd number obtained from vfs_open
+ * @param[out] dest     destination buffer to hold the line
+ * @param[in]  count    maximum number of characters to read
+ *
+ * @return number of bytes read on success
+ * @return <0 on error
+ */
+ssize_t vfs_readline(int fd, char *dest, size_t count);
 
 /**
  * @brief Write bytes to an open file

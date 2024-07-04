@@ -207,6 +207,10 @@ void saul_init_devs(void)
         extern void auto_init_mag3110(void);
         auto_init_mag3110();
     }
+    if (IS_USED(MODULE_MAX31855)) {
+        extern void auto_init_max31855(void);
+        auto_init_max31855();
+    }
     if (IS_USED(MODULE_MCP47XX)) {
         extern void auto_init_mcp47xx(void);
         auto_init_mcp47xx();
@@ -342,5 +346,9 @@ void saul_init_devs(void)
     if (IS_USED(MODULE_SERVO)) {
         extern void auto_init_servo(void);
         auto_init_servo();
+    }
+    if (IS_USED(MODULE_WS281X)) {
+        extern void auto_init_ws281x(void);
+        auto_init_ws281x();
     }
 }

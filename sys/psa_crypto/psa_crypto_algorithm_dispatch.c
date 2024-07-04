@@ -81,9 +81,33 @@ psa_status_t psa_algorithm_dispatch_hash_setup(psa_hash_operation_t *operation,
         }
         break;
     #endif
+    #if (IS_USED(MODULE_PSA_HASH_SHA_384))
+    case PSA_ALG_SHA_384:
+        status = psa_hashes_sha384_setup(&operation->ctx.sha384);
+        if (status != PSA_SUCCESS) {
+            return status;
+        }
+        break;
+    #endif
     #if (IS_USED(MODULE_PSA_HASH_SHA_512))
     case PSA_ALG_SHA_512:
         status = psa_hashes_sha512_setup(&operation->ctx.sha512);
+        if (status != PSA_SUCCESS) {
+            return status;
+        }
+        break;
+    #endif
+    #if (IS_USED(MODULE_PSA_HASH_SHA_512_224))
+    case PSA_ALG_SHA_512_224:
+        status = psa_hashes_sha512_224_setup(&operation->ctx.sha512_224);
+        if (status != PSA_SUCCESS) {
+            return status;
+        }
+        break;
+    #endif
+    #if (IS_USED(MODULE_PSA_HASH_SHA_512_256))
+    case PSA_ALG_SHA_512_256:
+        status = psa_hashes_sha512_256_setup(&operation->ctx.sha512_256);
         if (status != PSA_SUCCESS) {
             return status;
         }
@@ -120,9 +144,21 @@ psa_status_t psa_algorithm_dispatch_hash_update(psa_hash_operation_t *operation,
     case PSA_ALG_SHA_256:
         return psa_hashes_sha256_update(&operation->ctx.sha256, input, input_length);
     #endif
+    #if (IS_USED(MODULE_PSA_HASH_SHA_384))
+    case PSA_ALG_SHA_384:
+        return psa_hashes_sha384_update(&operation->ctx.sha384, input, input_length);
+    #endif
     #if (IS_USED(MODULE_PSA_HASH_SHA_512))
     case PSA_ALG_SHA_512:
         return psa_hashes_sha512_update(&operation->ctx.sha512, input, input_length);
+    #endif
+    #if (IS_USED(MODULE_PSA_HASH_SHA_512_224))
+    case PSA_ALG_SHA_512_224:
+        return psa_hashes_sha512_224_update(&operation->ctx.sha512_224, input, input_length);
+    #endif
+    #if (IS_USED(MODULE_PSA_HASH_SHA_512_256))
+    case PSA_ALG_SHA_512_256:
+        return psa_hashes_sha512_256_update(&operation->ctx.sha512_256, input, input_length);
     #endif
     default:
         (void)operation;
@@ -154,9 +190,21 @@ psa_status_t psa_algorithm_dispatch_hash_finish(psa_hash_operation_t *operation,
     case PSA_ALG_SHA_256:
         return psa_hashes_sha256_finish(&operation->ctx.sha256, hash, hash_size, hash_length);
     #endif
+    #if (IS_USED(MODULE_PSA_HASH_SHA_384))
+    case PSA_ALG_SHA_384:
+        return psa_hashes_sha384_finish(&operation->ctx.sha384, hash, hash_size, hash_length);
+    #endif
     #if (IS_USED(MODULE_PSA_HASH_SHA_512))
     case PSA_ALG_SHA_512:
         return psa_hashes_sha512_finish(&operation->ctx.sha512, hash, hash_size, hash_length);
+    #endif
+    #if (IS_USED(MODULE_PSA_HASH_SHA_512_224))
+    case PSA_ALG_SHA_512_224:
+        return psa_hashes_sha512_224_finish(&operation->ctx.sha512_224, hash, hash_size, hash_length);
+    #endif
+    #if (IS_USED(MODULE_PSA_HASH_SHA_512_256))
+    case PSA_ALG_SHA_512_256:
+        return psa_hashes_sha512_256_finish(&operation->ctx.sha512_256, hash, hash_size, hash_length);
     #endif
     default:
         (void)operation;
@@ -426,6 +474,73 @@ psa_status_t psa_algorithm_dispatch_generate_key(   const psa_key_attributes_t *
     }
 
     return psa_builtin_generate_key(attributes, key_data, *key_bytes, key_bytes);
+}
+
+psa_status_t psa_algorithm_dispatch_import_key(const psa_key_attributes_t *attributes,
+                                               const uint8_t *data, size_t data_length,
+                                               psa_key_slot_t *slot, size_t *bits)
+{
+    uint8_t *key_data = NULL;
+    size_t *key_bytes = NULL;
+    size_t key_data_size;
+
+    key_data_size = psa_get_key_data_from_key_slot(slot, &key_data, &key_bytes);
+
+    /**
+     * Asymmetric keys needs special import handling:
+     * The public key needs to be derived from the imported private key.
+     */
+    if (PSA_KEY_TYPE_IS_KEY_PAIR(attributes->type)) {
+        psa_asym_key_t asym_key = PSA_INVALID_OPERATION;
+        uint8_t *pubkey_data = NULL;
+        size_t *pubkey_data_len = NULL;
+        psa_get_public_key_data_from_key_slot(slot, &pubkey_data, &pubkey_data_len);
+
+        if (PSA_KEY_TYPE_IS_ECC_KEY_PAIR(attributes->type)) {
+            asym_key =
+                PSA_ENCODE_ECC_KEY_TYPE(attributes->bits,
+                                        PSA_KEY_TYPE_ECC_GET_FAMILY(attributes->type));
+
+            if (asym_key == PSA_INVALID_OPERATION) {
+                return PSA_ERROR_INVALID_ARGUMENT;
+            }
+        }
+
+        // derive and save public from private key
+        psa_status_t ret = PSA_ERROR_NOT_SUPPORTED;
+        switch (asym_key) {
+#if IS_USED(MODULE_PSA_ASYMMETRIC_ECC_P192R1)
+        case PSA_ECC_P192_R1:
+            // todo: support for Weierstrass curves
+            (void)slot;
+            ret = PSA_ERROR_NOT_SUPPORTED;
+            break;
+#endif
+#if IS_USED(MODULE_PSA_ASYMMETRIC_ECC_P256R1)
+        case PSA_ECC_P256_R1:
+            // todo: support for Weierstrass curves
+            (void)slot;
+            ret = PSA_ERROR_NOT_SUPPORTED;
+            break;
+#endif
+#if IS_USED(MODULE_PSA_ASYMMETRIC_ECC_ED25519)
+        case PSA_ECC_ED25519:
+            ret = psa_derive_ecc_ed25519_public_key(data, pubkey_data, data_length, pubkey_data_len);
+            break;
+#endif
+        default:
+            (void)slot;
+            ret = PSA_ERROR_NOT_SUPPORTED;
+            break;
+        }
+        if (ret == PSA_SUCCESS) {
+            /* save private key data */
+            memcpy(key_data, data, data_length);
+            *key_bytes = data_length;
+        }
+        return ret;
+    }
+    return psa_builtin_import_key(attributes, data, data_length, key_data, key_data_size, key_bytes, bits);
 }
 #endif /* MODULE_PSA_KEY_MANAGEMENT */
 
