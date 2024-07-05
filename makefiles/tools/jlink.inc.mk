@@ -15,6 +15,7 @@ JLINK_SERIAL ?= $(DEBUG_ADAPTER_ID)
 JLINK_IF ?=
 JLINK_RESET_FILE ?=
 JLINK_PRE_FLASH ?=
+JLINK_POST_FLASH ?=
 
 # Export JLINK_SERIAL to required targets
 JLINK_TARGETS = debug% flash% reset term-rtt
@@ -36,4 +37,9 @@ endif
 # Export JLINK_PRE_FLASH to flash targets only if not empty
 ifneq (,$(JLINK_PRE_FLASH))
   $(call target-export-variables,flash%,JLINK_PRE_FLASH)
+endif
+
+# Export JLINK_POST_FLASH to flash targets only if not empty
+ifneq (,$(JLINK_POST_FLASH))
+  $(call target-export-variables,flash%,JLINK_POST_FLASH)
 endif

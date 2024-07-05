@@ -185,9 +185,10 @@ flash_common() {
     test_config
     test_serial
     test_version
-    if [ -n "${JLINK_POST_FLASH}" ]; then
+    echo "${JLINK_POST_FLASH}"
+    #if [ -n "${JLINK_POST_FLASH}" ]; then
         printf "%s\n" "${JLINK_POST_FLASH}" >> "${BINDIR}/burn.seg"
-    fi
+    #fi
     cat "${JLINK_RESET_FILE}" >> "${BINDIR}/burn.seg"
     # flash device
     sh -c "${JLINK} ${JLINK_SERIAL} \
