@@ -3,10 +3,10 @@
 @ingroup     boards_common
 @brief       Common files and configuration for nRF52 boards.
 
-## Flashing nrf52 boards
+## Flashing nRF52 Boards
 
-By default, nrf52 boards are flashed using Jlink. @ref boards_nrf52840-mdk
-uses PyOCD by default.
+All predefined boards in RIOT are configured to use their standard
+programming method, enabling a straight forward development process.
 
 To flash the board, use `BOARD=<nrf52 board>` with the `make` command.<br/>
 Example with `hello-world` application:
@@ -14,19 +14,36 @@ Example with `hello-world` application:
     make BOARD=<nrf52 board> -C examples/hello-world flash
 ```
 
-OpenOCD can also be used to flash nrf52 boards (except thingy52 and ruuvitag
-because they are hardly coupled with JLink segger_rtt stdio).
-For the moment, the latest stable version of OpenOCD (0.10) doesn't contain any
-support for nrf52 but versions built against the current development version
-can be used.
+### J-Link
+The original "full size" development boards from Nordic Semiconductor,
+such as the nRF52 DK and others are equipped with an onboard Segger J-Link
+programmer, which is supported by RIOT.
+
+### nrfutil
+
+The smaller Nordic nRF52840 Dongle development board can be programmed
+with the factory bootloader and the `nrfutil`.
+
+### PyOCD
+
+The makerdiary @ref boards_nrf52832-mdk and @ref boards_nrf52840-mdk
+development boards use the DAPLink programmer with PyOCD.
+
+### OpenOCD
+
+OpenOCD can be used as an alternative to the J-Link to flash nRF52 boards.
+Some boards, such as the thingy52 and ruuvitag rely on the segger_rtt stdio
+for their serial terminal, which is not compatible with OpenOCD.
 
 To flash the board with OpenOCD, use the `PROGRAMMER` variable:
 ```
     PROGRAMMER=openocd make BOARD=<nrf52 board> -C examples/hello-world flash
 ```
 
+### ST-LINK/V2
+
 It is also possible to use the SWD interface of a ST-LINK/V2 in-circuit
-debugger/programmer with OpenOCD to flash a nrf52 board:
+debugger/programmer with OpenOCD to flash a nRF52 board:
 ```
     PROGRAMMER=openocd OPENOCD_DEBUG_ADAPTER=stlink make BOARD=<nrf52 board> -C examples/hello-world flash
 ```
