@@ -32,6 +32,7 @@ development boards use the DAPLink programmer with PyOCD.
 ### OpenOCD
 
 OpenOCD can be used as an alternative to the J-Link to flash nRF52 boards.
+All nRF52 chips are supported since OpenOCD v0.11.
 Some boards, such as the thingy52 and ruuvitag rely on the segger_rtt stdio
 for their serial terminal, which is not compatible with OpenOCD.
 
