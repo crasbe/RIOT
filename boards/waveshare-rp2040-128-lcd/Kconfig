@@ -1,0 +1,14 @@
+# Copyright (C) 2025 Technische Universität Hamburg
+#
+# This file is subject to the terms and conditions of the GNU Lesser
+# General Public License v2.1. See the file LICENSE in the top level
+# directory for more details.
+#
+
+config BOARD
+    default "waveshare-rp2040-128-lcd" if BOARD_WAVESHARE_RP2040_128_LCD
+
+config BOARD_WAVESHARE_RP2040_128_LCD
+    bool
+    default y
+    select CPU_MODEL_RP2040
