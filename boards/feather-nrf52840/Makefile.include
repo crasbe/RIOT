@@ -6,11 +6,12 @@ ifeq (uf2conv,$(PROGRAMMER))
 
   # Using uf2conv implies using the UF2 bootloader
   #
-  # It has a static MBR at the first 4k, and a 38k UF2 Bootloader at
-  # the end, leaving 972k for the application. This overwrites any SoftDevice,
-  # but that's what the minimal working example does as well.
-  ROM_OFFSET = 0x1000
-  ROM_LEN    = 0xf3000
+  # It has a static MBR at the first 4k, SoftDevice V7 up until 156k and a
+  # 38k UF2 Bootloader at the end, leaving 820k for the application.
+  # This avoids overwriting the SoftDevice to keep the ability to use other
+  # software in the future.
+  ROM_OFFSET = 0x27000
+  ROM_LEN    = 0xCD000
 
   # Driver can take some time to get mounted
   PREFLASH_DELAY ?= 3

@@ -8,10 +8,12 @@
 
 /**
  * @ingroup     boards_seeedstudio-xiao-nrf52840
+ * @ingroup     boards_seeedstudio-xiao-nrf52840-sense
  * @{
  *
  * @file
  * @brief       Board specific configuration for the Seeed Studio XIAO nRF52840
+ *              and XIAO nRF52840 Sense
  *
  * @author      Mikolai Gütschow <mikolai.guetschow@tu-dresden.de>
  */
@@ -77,6 +79,18 @@ extern "C" {
 
 /** Default MTD device */
 #define MTD_0 mtd_dev_get(0)
+
+#ifdef BOARD_SEEEDSTUDIO_XIAO_NRF52840_SENSE
+/**
+ * @name    LSM6DS3TR-C accelerometer sensor configuration
+ * @{
+ */
+#define LSM6DSXX_PARAM_I2C I2C_DEV(1)
+#define LSM6DSXX_PARAM_ADDR (0x6A)
+
+#define LSM6DS3_PWR_PIN GPIO_PIN(1, 8)
+/** @} */
+#endif
 
 /**
  * @name    ztimer configuration values

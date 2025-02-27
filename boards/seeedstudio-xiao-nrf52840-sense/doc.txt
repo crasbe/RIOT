@@ -1,0 +1,30 @@
+/**
+ * @defgroup    boards_seeedstudio-xiao-nrf52840-sense Seeed Studio XIAO nRF52840 Sense
+ * @ingroup     boards
+ * @brief       Support for the Seeed Studio XIAO nRF52840 Sense
+ *
+ * ### General information
+ *
+ * The [XIAO nRF52840 Sense][seeedstudio-xiao-nrf52840-sense] (formally known as XIAO BLE)
+ * is a development board from Seeed Studio's XIAO board family.
+ *
+ * It provides native USB support, Bluetooth
+ * Low Energy and IEEE 802.15.4 support via the nRF52840 MCU.
+ * Compared to the XIAO nRF52840, it features a PDM microphone and an LSM6DS3TR-C IMU.
+ *
+ * <img src="https://files.seeedstudio.com/wiki/XIAO-BLE/pinout2.png"
+ *      alt="top-down view on seeedstudio-xiao-nrf52840-sense" width="50%"/>
+ *
+ * [seeedstudio-xiao-nrf52840-sense]: https://wiki.seeedstudio.com/XIAO_BLE/
+ *
+ * ### Flashing, Bootloader, and Terminal
+ *
+ * Refer to the [Feather nRF52840 Express
+ * documentation](https://doc.riot-os.org/group__boards__feather-nrf52840.html) for further details.
+ * Both use the same flasher, bootloader, and terminal settings.
+ *
+ * Example with `hello-world` application:
+ * ```
+ *      make BOARD=seeedstudio-xiao-nrf52840-sense -C examples/basic/hello-world flash term
+ * ```
+ */

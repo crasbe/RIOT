@@ -1,0 +1,1 @@
+../../seeedstudio-xiao-nrf52840/include/periph_conf.h

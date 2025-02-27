@@ -1,0 +1,1 @@
+../../seeedstudio-xiao-nrf52840/include/gpio_params.h
