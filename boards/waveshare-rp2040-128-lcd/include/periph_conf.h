@@ -24,6 +24,7 @@
 
 #include "kernel_defines.h"
 #include "cpu.h"
+#include "board.h"
 #include "periph_cpu.h"
 
 #ifdef __cplusplus
@@ -116,7 +117,7 @@ static const timer_conf_t timer_config[] = {
 static const adc_conf_t adc_config[] = {
                                         { .pin = GPIO_PIN(0, 26), .chan = 0},
                                         { .pin = GPIO_PIN(0, 27), .chan = 1},
-                                        { .pin = GPIO_PIN(0, 28), .chan = 2},
+                                        { .pin = GPIO_PIN(0, 29), .chan = 2}, /* Battery ADC*/
                                         };
 
 #define ADC_NUMOF           ARRAY_SIZE(adc_config)
@@ -186,8 +187,8 @@ static const pwm_conf_t pwm_config[] = {
     {
         .pwm_slice   = 4,
         .chan    = {
-            { .pin = GPIO_PIN(0, 25), .cc_chan = 1 },   /* rpi-pico onboard LED */
-            { .pin = GPIO_UNDEF,      .cc_chan = 0 },
+            { .pin = LCD_BL,        .cc_chan = 1 },   /* LCD Backlight */
+            { .pin = GPIO_UNDEF,    .cc_chan = 0 },
         },
     },
 };

@@ -43,6 +43,21 @@ extern "C" {
 
 #endif
 
+/**
+ * @name LCD Pins
+ * @{
+ */
+#define LCD_DC      GPIO_PIN(0, 8)
+#define LCD_CS      GPIO_PIN(0, 9)
+#define LCD_CLK     GPIO_PIN(0, 10)
+#define LCD_DIN     GPIO_PIN(0, 11)
+#define LCD_RST     GPIO_PIN(0, 12)
+#define LCD_BL      GPIO_PIN(0, 25)
+
+/** @} */
+
+
+
 #ifdef __cplusplus
 }
 #endif
