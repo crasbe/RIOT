@@ -1,10 +1,9 @@
- /*
- * Copyright (C) 2023 COGIP Robotics association
- *
- * This file is subject to the terms and conditions of the GNU Lesser
- * General Public License v2.1. See the file LICENSE in the top level
- * directory for more details.
+/*
+ * SPDX-FileCopyrightText: 2023 COGIP Robotics association
+ * SPDX-License-Identifier: LGPL-2.1-only
  */
+
+#pragma once
 
 /**
  * @ingroup     tests
@@ -17,14 +16,11 @@
  *
  */
 
-#ifndef INIT_DEV_H
-#define INIT_DEV_H
-
 #include <motor_driver.h>
 
 #ifndef MOTOR_DRIVER_PARAM_MOTOR_SET_POST_CALLBACK
 /** Default callback called at end of motor_set() */
-#define MOTOR_DRIVER_PARAM_MOTOR_SET_POST_CALLBACK  motor_driver_callback_example
+#  define MOTOR_DRIVER_PARAM_MOTOR_SET_POST_CALLBACK motor_driver_callback_example
 #endif
 
 #ifdef __cplusplus
@@ -46,6 +42,4 @@ void motor_driver_callback_example(
 #ifdef __cplusplus
 }
 #endif
-
-#endif /* INIT_DEV_H */
 /** @} */
