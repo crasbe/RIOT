@@ -1,10 +1,9 @@
- /*
- * Copyright (C) 2023 COGIP Robotics association
- *
- * This file is subject to the terms and conditions of the GNU Lesser
- * General Public License v2.1. See the file LICENSE in the top level
- * directory for more details.
+/*
+ * SPDX-FileCopyrightText: 2023 COGIP Robotics association
+ * SPDX-License-Identifier: LGPL-2.1-only
  */
+
+#pragma once
 
 /**
  * @ingroup     drivers_motor_driver
@@ -16,9 +15,6 @@
  * @author      Gilles DOFFE <g.doffe@gmail.com>
  *
  */
-
-#ifndef MOTOR_DRIVER_PARAMS_H
-#define MOTOR_DRIVER_PARAMS_H
 
 #include "board.h"
 #include "motor_driver.h"
@@ -35,88 +31,88 @@ extern "C" {
 
 #ifndef MOTOR_DRIVER_PARAM_MODE
 /** Default motor driver mode */
-#define MOTOR_DRIVER_PARAM_MODE             MOTOR_DRIVER_1_DIR
+#  define MOTOR_DRIVER_PARAM_MODE               MOTOR_DRIVER_1_DIR
 #endif
 #ifndef MOTOR_DRIVER_PARAM_BRAKE_INVERTED
 /** Default brake level */
-#define MOTOR_DRIVER_PARAM_BRAKE_INVERTED   false
+#  define MOTOR_DRIVER_PARAM_BRAKE_INVERTED     false
 #endif
 #ifndef MOTOR_DRIVER_PARAM_ENABLE_INVERTED
 /** Default enable level */
-#define MOTOR_DRIVER_PARAM_ENABLE_INVERTED  false
+#  define MOTOR_DRIVER_PARAM_ENABLE_INVERTED    false
 #endif
 #ifndef MOTOR_DRIVER_PARAM_PWM
 /** Default PWM device */
-#define MOTOR_DRIVER_PARAM_PWM              0
+#  define MOTOR_DRIVER_PARAM_PWM                0
 #endif
 #ifndef MOTOR_DRIVER_PARAM_PWM_MODE
 /** Default PWM mode */
-#define MOTOR_DRIVER_PARAM_PWM_MODE         PWM_LEFT
+#  define MOTOR_DRIVER_PARAM_PWM_MODE           PWM_LEFT
 #endif
 #ifndef MOTOR_DRIVER_PARAM_PWM_FREQUENCY
 /** Default PWM frequency */
-#define MOTOR_DRIVER_PARAM_PWM_FREQUENCY    20000U
+#  define MOTOR_DRIVER_PARAM_PWM_FREQUENCY      20000U
 #endif
 #ifndef MOTOR_DRIVER_PARAM_PWM_RESOLUTION
 /** Default PWM resolution */
-#define MOTOR_DRIVER_PARAM_PWM_RESOLUTION   100U
+#  define MOTOR_DRIVER_PARAM_PWM_RESOLUTION     100U
 #endif
 #ifndef MOTOR_DRIVER_PARAM_NB_MOTORS
 /** Default number of motors */
-#define MOTOR_DRIVER_PARAM_NB_MOTORS        2U
+#  define MOTOR_DRIVER_PARAM_NB_MOTORS          2U
 #endif
 #ifndef MOTOR_DRIVER_PARAM_MOTOR_SET_POST_CALLBACK
 /** Default callback called at end of motor_set() */
-#define MOTOR_DRIVER_PARAM_MOTOR_SET_POST_CALLBACK  NULL
+#  define MOTOR_DRIVER_PARAM_MOTOR_SET_POST_CALLBACK    NULL
 #endif
 
 /* Motor 1 */
 #ifndef MOTOR_DRIVER_PARAM_MOTOR1_PWM_CHANNEL
 /** Default motor 1 PWM channel */
-#define MOTOR_DRIVER_PARAM_MOTOR1_PWM_CHANNEL           1U
+#  define MOTOR_DRIVER_PARAM_MOTOR1_PWM_CHANNEL         1U
 #endif
 #ifndef MOTOR_DRIVER_PARAM_MOTOR1_GPIO_ENABLE
 /** Default motor 1 enable GPIO */
-#define MOTOR_DRIVER_PARAM_MOTOR1_GPIO_ENABLE           GPIO_UNDEF
+#  define MOTOR_DRIVER_PARAM_MOTOR1_GPIO_ENABLE         GPIO_UNDEF
 #endif
 #ifndef MOTOR_DRIVER_PARAM_MOTOR1_GPIO_DIR0
 /** Default motor 1 direction GPIO */
-#define MOTOR_DRIVER_PARAM_MOTOR1_GPIO_DIR0             GPIO_UNDEF
+#  define MOTOR_DRIVER_PARAM_MOTOR1_GPIO_DIR0           GPIO_UNDEF
 #endif
 #ifndef MOTOR_DRIVER_PARAM_MOTOR1_GPIO_DIR1_OR_BRAKE
 /** Default motor 1 direction or brake GPIO */
-#define MOTOR_DRIVER_PARAM_MOTOR1_GPIO_DIR1_OR_BRAKE    GPIO_UNDEF
+#  define MOTOR_DRIVER_PARAM_MOTOR1_GPIO_DIR1_OR_BRAKE  GPIO_UNDEF
 #endif
 #ifndef MOTOR_DRIVER_PARAM_MOTOR1_GPIO_DIR_REVERSE
 /** Default motor 1 direction GPIO(s) reverse */
-#define MOTOR_DRIVER_PARAM_MOTOR1_GPIO_DIR_REVERSE      0
+#  define MOTOR_DRIVER_PARAM_MOTOR1_GPIO_DIR_REVERSE    0
 #endif
 
 /* Motor 2 */
 #ifndef MOTOR_DRIVER_PARAM_MOTOR2_PWM_CHANNEL
 /** Default motor 2 PWM channel */
-#define MOTOR_DRIVER_PARAM_MOTOR2_PWM_CHANNEL           2U
+#  define MOTOR_DRIVER_PARAM_MOTOR2_PWM_CHANNEL         2U
 #endif
 #ifndef MOTOR_DRIVER_PARAM_MOTOR2_GPIO_ENABLE
 /** Default motor 2 enable GPIO */
-#define MOTOR_DRIVER_PARAM_MOTOR2_GPIO_ENABLE           GPIO_UNDEF
+#  define MOTOR_DRIVER_PARAM_MOTOR2_GPIO_ENABLE         GPIO_UNDEF
 #endif
 #ifndef MOTOR_DRIVER_PARAM_MOTOR2_GPIO_DIR0
 /** Default motor 2 direction GPIO */
-#define MOTOR_DRIVER_PARAM_MOTOR2_GPIO_DIR0             GPIO_UNDEF
+#  define MOTOR_DRIVER_PARAM_MOTOR2_GPIO_DIR0           GPIO_UNDEF
 #endif
 #ifndef MOTOR_DRIVER_PARAM_MOTOR2_GPIO_DIR1_OR_BRAKE
 /** Default motor 2 direction or brake GPIO */
-#define MOTOR_DRIVER_PARAM_MOTOR2_GPIO_DIR1_OR_BRAKE    GPIO_UNDEF
+#  define MOTOR_DRIVER_PARAM_MOTOR2_GPIO_DIR1_OR_BRAKE  GPIO_UNDEF
 #endif
 #ifndef MOTOR_DRIVER_PARAM_MOTOR2_GPIO_DIR_REVERSE
 /** Default motor 2 direction GPIO(s) reverse */
-#define MOTOR_DRIVER_PARAM_MOTOR2_GPIO_DIR_REVERSE      0
+#  define MOTOR_DRIVER_PARAM_MOTOR2_GPIO_DIR_REVERSE    0
 #endif
 
 #ifndef MOTOR_DRIVER_PARAMS
 /** Default motor driver parameters */
-#define MOTOR_DRIVER_PARAMS \
+#  define MOTOR_DRIVER_PARAMS \
     { \
         .mode            = MOTOR_DRIVER_PARAM_MODE, \
         .pwm_dev         = MOTOR_DRIVER_PARAM_PWM, \
@@ -149,7 +145,7 @@ extern "C" {
 /* SAUL */
 #ifndef MOTOR_DRIVER_SAUL_INFO
 /** SAUL information */
-#define MOTOR_DRIVER_SAUL_INFO         { .name = "motor_driver" }
+#  define MOTOR_DRIVER_SAUL_INFO       { .name = "motor_driver" }
 #endif
 /**@}*/
 
@@ -172,6 +168,4 @@ static const saul_reg_info_t motor_driver_saul_info[] =
 #ifdef __cplusplus
 }
 #endif
-
-#endif /* MOTOR_DRIVER_PARAMS_H */
 /** @} */

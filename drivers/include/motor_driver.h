@@ -1,9 +1,6 @@
 /*
- * Copyright (C) 2018 Gilles DOFFE <g.doffe@gmail.com>
- *
- * This file is subject to the terms and conditions of the GNU Lesser
- * General Public License v2.1. See the file LICENSE in the top level
- * directory for more details.
+ * SPDX-FileCopyrightText: 2018 Gilles DOFFE <g.doffe@gmail.com>
+ * SPDX-License-Identifier: LGPL-2.1-only
  */
 
 #pragma once
@@ -84,9 +81,6 @@
  * @author      Gilles DOFFE <g.doffe@gmail.com>
  */
 
-#ifndef MOTOR_DRIVER_H
-#define MOTOR_DRIVER_H
-
 #include <stdbool.h>
 
 #include "periph/pwm.h"
@@ -105,7 +99,7 @@ extern "C" {
  * @brief Maximum number of motors by motor driver
  */
 #ifndef CONFIG_MOTOR_DRIVER_MAX
-#define CONFIG_MOTOR_DRIVER_MAX    (2)
+#  define CONFIG_MOTOR_DRIVER_MAX  (2)
 #endif
 /** @} */
 
@@ -196,9 +190,9 @@ struct _motor_driver_t {
  * @param[out]  motor_driver    motor driver to initialize
  * @param[in]   params          motor driver parameters
  *
- * @return                      0 on success
- * @return                      -EINVAL on bad parameter value
- * @return                      -EIO on failed GPIO init
+ * @retval                      0 on success
+ * @retval                      -EINVAL on bad parameter value
+ * @retval                      -EIO on failed GPIO init
  */
 int motor_driver_init(motor_driver_t *motor_driver, const motor_driver_params_t *params);
 
@@ -209,8 +203,8 @@ int motor_driver_init(motor_driver_t *motor_driver, const motor_driver_params_t 
  * @param[in] motor_id          motor ID on driver
  * @param[in] pwm_duty_cycle    signed PWM duty_cycle to set motor speed and direction
  *
- * @return                      0 on success
- * @return                      -EINVAL on bad motor ID
+ * @retval                      0 on success
+ * @retval                      -EINVAL on bad motor ID
  */
 int motor_set(const motor_driver_t *motor_driver, uint8_t motor_id, \
               int32_t pwm_duty_cycle);
@@ -221,8 +215,8 @@ int motor_set(const motor_driver_t *motor_driver, uint8_t motor_id, \
  * @param[in] motor_driver      motor driver to which motor is attached
  * @param[in] motor_id          motor ID on driver
  *
- * @return                      0 on success
- * @return                      -EINVAL on bad motor ID
+ * @retval                      0 on success
+ * @retval                      -EINVAL on bad motor ID
  */
 int motor_brake(const motor_driver_t *motor_driver, uint8_t motor_id);
 
