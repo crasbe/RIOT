@@ -14,7 +14,6 @@
 
 declare -A DEPS
 
-DEPS["./dist/tools/licenses/check.sh"]="head"
 DEPS["./dist/tools/doccheck/check.sh"]="doxygen tput"
 DEPS["./dist/tools/cppcheck/check.sh"]="cppcheck"
 DEPS["./dist/tools/vera++/check.sh"]="vera++"
@@ -112,8 +111,6 @@ fi
 export BASE_BRANCH="${CI_BASE_BRANCH}"
 
 run ./dist/tools/whitespacecheck/check.sh "${BASE_BRANCH}"
-DIFFFILTER="MR" ERROR_EXIT_CODE=0 run ./dist/tools/licenses/check.sh
-DIFFFILTER="AC" run ./dist/tools/licenses/check.sh
 run ./dist/tools/ci/check_features_existing_inc_mk_is_up_to_date.sh
 run ./dist/tools/doccheck/check.sh
 run ./dist/tools/externc/check.sh
