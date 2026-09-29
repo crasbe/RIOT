@@ -76,6 +76,29 @@ def get_apps(riotbase, apps_filter=None):
     return apps
 
 
+def get_boards(riotbase):
+    """List all boards RIOT has.
+
+    Args:
+        riotbase: Path to the RIOT checkout.
+
+    Returns:
+        A list of board names.
+    """
+    result = _run(
+        ["make", "--no-print-directory", "-f", "makefiles/boards.inc.mk", "info-boards"],
+        cwd=riotbase,
+    )
+    return result.stdout.split()
+
+
+def normalize_app(appdir):
+    """Strip a leading "./" and trailing "/" from an application directory,
+    so e.g. "./tests/sys/shell/" matches "tests/sys/shell"."""
+    appdir = appdir.rstrip("/")
+    return appdir[2:] if appdir.startswith("./") else appdir
+
+
 def get_supported_boards(riotbase, appdir, boards_filter=None):
     """List the boards a given application supports.
 
@@ -209,24 +232,35 @@ def select_builds(riotbase, boards=None, apps=None, full_build=False,
             built.
 
     Returns:
-        {"apps": [...], "boards": [...] or None}: the application
-        directories to build, and the boards to restrict them to (None
-        meaning all boards each application supports). "apps" is empty if
-        change detection found nothing to build.
+        {"apps": [...], "boards": [...] or None, "errors": [...]}: the
+        application directories to build, the boards to restrict them to
+        (None meaning all boards each application supports), and the given
+        `apps`/`boards` entries that don't exist. "apps" is empty if change
+        detection found nothing to build.
     """
+    errors = []
+    if apps:
+        apps = [normalize_app(a) for a in apps]
+        known_apps = set(get_apps(riotbase))
+        errors += [f"unknown application: {a}" for a in apps if a not in known_apps]
+    if boards:
+        known_boards = set(get_boards(riotbase))
+        errors += [f"unknown board: {b}" for b in boards if b not in known_boards]
+
     boards_changed = []
     if not full_build and not boards and not apps and upstream_commit:
         apps_changed, boards_changed, needs_full = can_fast_ci_run(riotbase, upstream_commit)
         if needs_full:
             full_build = True
         elif not apps_changed and not boards_changed:
-            return {"apps": [], "boards": None}
+            return {"apps": [], "boards": None, "errors": errors}
         elif not apps:
             apps = apps_changed or None
 
     board_filter = boards or boards_changed or (QUICKBUILD_BOARDS if quick_build else None)
     return {"apps": get_apps(riotbase, apps_filter=apps),
-            "boards": list(board_filter) if board_filter else None}
+            "boards": list(board_filter) if board_filter else None,
+            "errors": errors}
 
 
 def compute_compile_jobs(riotbase, boards=None, apps=None, full_build=False,
@@ -243,8 +277,9 @@ def compute_compile_jobs(riotbase, boards=None, apps=None, full_build=False,
 
     Returns:
         {"jobs": [...], "errors": [...]}, where "jobs" is a list of
-        {"appdir", "board", "toolchain"} dicts and "errors" lists the
-        application directories whose supported-boards query failed.
+        {"appdir", "board", "toolchain"} dicts and "errors" lists unknown
+        `apps`/`boards` entries and the applications whose supported-boards
+        query failed.
     """
     selection = select_builds(riotbase, boards=boards, apps=apps, full_build=full_build,
                               quick_build=quick_build, upstream_commit=upstream_commit)
@@ -253,7 +288,7 @@ def compute_compile_jobs(riotbase, boards=None, apps=None, full_build=False,
     total = len(app_list)
 
     jobs = []
-    errors = []
+    errors = list(selection["errors"])
     for done, appdir in enumerate(app_list, 1):
         pairs = get_app_board_toolchain_pairs(riotbase, appdir, board_filter)
         if pairs is None:
@@ -278,7 +313,7 @@ def main(argv=None):
                          help="branch/commit to diff against for change detection")
     parser.add_argument("--select-only", action="store_true",
                          help="only print which applications and boards to build "
-                              '({"apps": [...], "boards": [...] or null})')
+                              '({"apps": [...], "boards": [...] or null, "errors": [...]})')
 
     args = parser.parse_args(argv)
     kwargs = dict(
@@ -289,12 +324,12 @@ def main(argv=None):
         upstream_commit=args.upstream_commit,
     )
     if args.select_only:
-        json.dump(select_builds(args.riotbase, **kwargs), sys.stdout)
-        print()
-        return 0
-
-    result = compute_compile_jobs(args.riotbase, **kwargs)
-    json.dump(result, sys.stdout)
+        result = select_builds(args.riotbase, **kwargs)
+    else:
+        result = compute_compile_jobs(args.riotbase, **kwargs)
+    # One value per line: Buildbot splits log lines longer than 4096
+    # characters, which would break a single-line JSON document.
+    json.dump(result, sys.stdout, indent=1)
     print()
     for error in result["errors"]:
         print(f"error: {error}", file=sys.stderr)

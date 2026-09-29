@@ -17,7 +17,7 @@ from urllib.parse import urlsplit
 
 from buildbot.plugins import steps, util
 from buildbot.process.properties import renderer
-from buildbot.process.results import SKIPPED, SUCCESS, statusToString
+from buildbot.process.results import ALL_RESULTS, SKIPPED, SUCCESS, statusToString
 from buildbot.steps.trigger import Trigger
 from buildbot.util import join_list
 
@@ -71,11 +71,24 @@ def _pr_properties(step):
 
 
 def _json_property(step, name):
-    raw = step.getProperty(name) or "{}"
-    try:
-        return json.loads(raw) if isinstance(raw, str) else raw
-    except json.JSONDecodeError:
-        return {}
+    return step.getProperty(name) or {}
+
+
+def _json_extractor(name):
+    """Build an extract_fn for SetPropertyFromCommand that parses the
+    command's JSON output into the property `name`.
+
+    Raises (making the step fail with an exception) on invalid JSON, rather
+    than letting later steps mistake it for an empty result.
+    """
+
+    def extract(rc, stdout, stderr):
+        try:
+            return {name: json.loads(stdout)}
+        except json.JSONDecodeError as e:
+            raise ValueError(f"jobs.py printed invalid JSON ({e})") from e
+
+    return extract
 
 
 def checkout_steps(repo_url):
@@ -199,8 +212,9 @@ def _jobs_py_command(select_only):
 class SelectBuilds(steps.SetPropertyFromCommand):
     """Decides which applications to build, and for which boards.
 
-    Runs `riot_ci/jobs.py --select-only` on the worker and stores its JSON
-    output (`{"apps": [...], "boards": [...] or null}`) as the `selection`
+    Runs `riot_ci/jobs.py --select-only` on the worker and stores its parsed
+    JSON output (`{"apps": [...], "boards": [...] or null, "errors": [...]}`)
+    as the `selection`
     build property, for `TriggerJobLists` to consume.
     """
 
@@ -208,7 +222,7 @@ class SelectBuilds(steps.SetPropertyFromCommand):
 
     def __init__(self, **kwargs):
         kwargs.setdefault("command", _jobs_py_command(select_only=True))
-        kwargs.setdefault("property", "selection")
+        kwargs.setdefault("extract_fn", _json_extractor("selection"))
         kwargs.setdefault("haltOnFailure", True)
         kwargs.setdefault("description", "Selecting applications and boards")
         super().__init__(**kwargs)
@@ -237,11 +251,21 @@ class _CountingTrigger(Trigger):
         self.triggered = len(triggers)
         return triggers
 
-    def getResultSummary(self):
-        summary = f"Triggered {_plural(getattr(self, 'triggered', 0), self.what)}"
-        if self.results != SUCCESS:
-            summary += f" ({statusToString(self.results)})"
+    def getCurrentSummary(self):
+        if not hasattr(self, "triggered"):
+            return {"step": join_list(self.description)}
+        summary = f"Triggered {_plural(self.triggered, self.what)}"
+        # Results of the triggered builds that finished so far (only
+        # collected with waitForFinish=True); Trigger's own bookkeeping.
+        finished = self._result_list
+        counts = [f"{finished.count(r)} {statusToString(r, finished.count(r))}"
+                  for r in ALL_RESULTS if finished.count(r)]
+        if counts:
+            summary += f" ({', '.join(counts)})"
         return {"step": summary}
+
+    def getResultSummary(self):
+        return self.getCurrentSummary()
 
 
 class TriggerJobLists(_CountingTrigger):
@@ -291,7 +315,7 @@ class TriggerJobLists(_CountingTrigger):
 class ComputeCompileJobs(steps.SetPropertyFromCommand):
     """Lists the compile jobs of the applications in the `apps` property.
 
-    Runs `riot_ci/jobs.py` on the worker and stores its JSON output as the
+    Runs `riot_ci/jobs.py` on the worker and stores its parsed JSON output as the
     `compile_jobs` build property, for `TriggerCompileJobs` to consume.
     Fails the build, without triggering anything, if `jobs.py` couldn't
     query an application (e.g. a broken Makefile).
@@ -301,7 +325,7 @@ class ComputeCompileJobs(steps.SetPropertyFromCommand):
 
     def __init__(self, **kwargs):
         kwargs.setdefault("command", _jobs_py_command(select_only=False))
-        kwargs.setdefault("property", "compile_jobs")
+        kwargs.setdefault("extract_fn", _json_extractor("compile_jobs"))
         kwargs.setdefault("haltOnFailure", True)
         kwargs.setdefault("description", "Listing compile jobs")
         super().__init__(**kwargs)
