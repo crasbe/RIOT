@@ -186,16 +186,17 @@ def can_fast_ci_run(riotbase, upstream_commit):
     return data.get("apps", []), data.get("boards", []), full_build_required
 
 
-def compute_compile_jobs(riotbase, boards=None, apps=None, full_build=False,
-                          quick_build=False, upstream_commit=None):
-    """Compute the full compile-job matrix for a RIOT checkout.
+def select_builds(riotbase, boards=None, apps=None, full_build=False,
+                  quick_build=False, upstream_commit=None):
+    """Decide which applications to build, and for which boards.
 
-    Reports progress on stderr, one line per application.
+    This is the cheap part of computing the job matrix: it doesn't query
+    the individual applications, see `compute_compile_jobs` for that.
 
     Args:
         riotbase: Path to the RIOT checkout.
-        boards: Space-free iterable of board names to restrict the build to.
-            Takes precedence over change detection and `quick_build`.
+        boards: Iterable of board names to restrict the build to. Takes
+            precedence over change detection and `quick_build`.
         apps: Iterable of application directories to restrict the build to.
             Takes precedence over change detection.
         full_build: If True, skip change detection and build everything
@@ -208,9 +209,10 @@ def compute_compile_jobs(riotbase, boards=None, apps=None, full_build=False,
             built.
 
     Returns:
-        {"jobs": [...], "errors": [...]}, where "jobs" is a list of
-        {"appdir", "board", "toolchain"} dicts and "errors" lists the
-        application directories whose supported-boards query failed.
+        {"apps": [...], "boards": [...] or None}: the application
+        directories to build, and the boards to restrict them to (None
+        meaning all boards each application supports). "apps" is empty if
+        change detection found nothing to build.
     """
     boards_changed = []
     if not full_build and not boards and not apps and upstream_commit:
@@ -218,13 +220,36 @@ def compute_compile_jobs(riotbase, boards=None, apps=None, full_build=False,
         if needs_full:
             full_build = True
         elif not apps_changed and not boards_changed:
-            return {"jobs": [], "errors": []}
+            return {"apps": [], "boards": None}
         elif not apps:
             apps = apps_changed or None
 
     board_filter = boards or boards_changed or (QUICKBUILD_BOARDS if quick_build else None)
+    return {"apps": get_apps(riotbase, apps_filter=apps),
+            "boards": list(board_filter) if board_filter else None}
 
-    app_list = get_apps(riotbase, apps_filter=apps)
+
+def compute_compile_jobs(riotbase, boards=None, apps=None, full_build=False,
+                          quick_build=False, upstream_commit=None):
+    """Compute the full compile-job matrix for a RIOT checkout.
+
+    Selects the applications and boards like `select_builds`, then queries
+    each application for its (board, toolchain) combinations. Reports
+    progress on stderr, one line per application.
+
+    Args:
+        riotbase, boards, apps, full_build, quick_build, upstream_commit:
+            See `select_builds`.
+
+    Returns:
+        {"jobs": [...], "errors": [...]}, where "jobs" is a list of
+        {"appdir", "board", "toolchain"} dicts and "errors" lists the
+        application directories whose supported-boards query failed.
+    """
+    selection = select_builds(riotbase, boards=boards, apps=apps, full_build=full_build,
+                              quick_build=quick_build, upstream_commit=upstream_commit)
+    app_list = selection["apps"]
+    board_filter = selection["boards"]
     total = len(app_list)
 
     jobs = []
@@ -251,16 +276,24 @@ def main(argv=None):
                          help="restrict to QUICKBUILD_BOARDS when no boards/apps are given")
     parser.add_argument("--upstream-commit", default=None,
                          help="branch/commit to diff against for change detection")
+    parser.add_argument("--select-only", action="store_true",
+                         help="only print which applications and boards to build "
+                              '({"apps": [...], "boards": [...] or null})')
 
     args = parser.parse_args(argv)
-    result = compute_compile_jobs(
-        args.riotbase,
+    kwargs = dict(
         boards=args.boards.split() if args.boards else None,
         apps=args.apps.split() if args.apps else None,
         full_build=args.full_build,
         quick_build=args.quick_build,
         upstream_commit=args.upstream_commit,
     )
+    if args.select_only:
+        json.dump(select_builds(args.riotbase, **kwargs), sys.stdout)
+        print()
+        return 0
+
+    result = compute_compile_jobs(args.riotbase, **kwargs)
     json.dump(result, sys.stdout)
     print()
     for error in result["errors"]:

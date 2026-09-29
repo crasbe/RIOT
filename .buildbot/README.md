@@ -14,9 +14,8 @@ on every start.
   `dist/tools/ci/can_fast_ci_run.py` to figure out which apps/boards need
   building. See its module docstring and function docstrings for details.
 - `riot_ci/steps.py` — `checkout_steps()` fetches and merges the code under
-  test, `ComputeCompileJobs` runs `jobs.py` on the worker and captures its
-  JSON output as a build property, `TriggerCompileJobs` triggers one
-  `compile` build per job.
+  test; the other steps run `jobs.py` on the workers and trigger the builds
+  for the job matrix (see "Job model").
 
 `dist/tools/compile_like_buildbot/` runs the same job matrix locally with
 plain `make`, without any Buildbot setup.
@@ -38,12 +37,24 @@ fetched by the `coordinator` and whenever it lacks the commit a build needs.
 
 ## Job model
 
-One shared `compile` builder, with every worker attached to it, fed by the
-`trigger-compile` scheduler. Each triggered build carries its own
-`appdir`/`board`/`toolchain` properties, so Buildbot hands jobs out to
-whichever worker is free next. A static `Builder` per app/board combination
-isn't an option here, since that matrix is only known once RIOT is checked
-out.
+A CI run starts with a `coordinator` build and fans out over the workers:
+
+1. `coordinator`: checks out (and merges) the code, decides which
+   applications to build and for which boards (`jobs.py --select-only`:
+   change detection, quick-build board selection), and triggers one
+   `list-jobs` build per batch of applications (`BUILDBOT_APPS_PER_BATCH`,
+   default 25). It waits for them, so it fails if any batch does.
+2. `list-jobs`: queries its applications for their supported
+   (board, toolchain) combinations — the slow part, now spread over the
+   workers — and triggers one `compile` build per combination. Compile
+   builds therefore start while other batches are still being listed.
+3. `compile`: builds one application for one board and toolchain.
+
+Every worker is attached to every builder; Buildbot hands each build to
+whichever worker is free next. A worker runs one `list-jobs`/`compile`/`test`
+build at a time; the lightweight `coordinator` runs next to it. A static
+builder per app/board combination isn't an option, since that matrix is only
+known once RIOT is checked out.
 
 ## Web interface
 

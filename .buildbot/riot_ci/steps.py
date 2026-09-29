@@ -1,10 +1,25 @@
-"""Buildbot steps that check out RIOT and compute/fan out its compile-job matrix."""
+"""Buildbot steps that check out RIOT and compute/fan out its compile-job matrix.
+
+The matrix is built in two stages, so the slow part is spread over the
+workers:
+
+1. The coordinator decides which applications to build, and for which
+   boards (`SelectBuilds`, cheap), and splits the applications into batches
+   (`TriggerJobLists`).
+2. Each batch is a "list-jobs" build on any free worker, which queries its
+   applications for their (board, toolchain) combinations
+   (`ComputeCompileJobs`) and triggers a "compile" build for each
+   (`TriggerCompileJobs`). Compile builds therefore start while other
+   batches are still being listed.
+"""
 import json
 from urllib.parse import urlsplit
 
-from buildbot.plugins import steps
+from buildbot.plugins import steps, util
 from buildbot.process.properties import renderer
+from buildbot.process.results import SKIPPED, SUCCESS, statusToString
 from buildbot.steps.trigger import Trigger
+from buildbot.util import join_list
 
 # Where the buildbot-worker image (riotdocker/buildbot-worker/) keeps
 # git-cache's repository mirrors: on its persistent /cache volume.
@@ -37,6 +52,30 @@ def _is_pr_build(step):
 
 def _needs_pr_head_resolve(step):
     return _is_pr_build(step) and not step.getProperty("pr_head_sha")
+
+
+def _hide_if_skipped(results, step):
+    return results == SKIPPED
+
+
+def _plural(count, noun):
+    return f"{count} {noun}" if count == 1 else f"{count} {noun}s"
+
+
+def _pr_properties(step):
+    """The PR properties a triggered build needs to reproduce this build's merge."""
+    if not step.getProperty("pr_number"):
+        return {}
+    return {"pr_number": step.getProperty("pr_number"),
+            "pr_head_sha": step.getProperty("pr_head_sha")}
+
+
+def _json_property(step, name):
+    raw = step.getProperty(name) or "{}"
+    try:
+        return json.loads(raw) if isinstance(raw, str) else raw
+    except json.JSONDecodeError:
+        return {}
 
 
 def checkout_steps(repo_url):
@@ -94,53 +133,166 @@ def checkout_steps(repo_url):
     if mirror:
         mirror_steps = [steps.ShellCommand(
             name="update-mirror", command=update_mirror_command,
-            env={"GIT_CACHE_DIR": GIT_CACHE_DIR}, haltOnFailure=True)]
+            env={"GIT_CACHE_DIR": GIT_CACHE_DIR}, haltOnFailure=True,
+            description="Updating repository mirror",
+            descriptionDone="Repository mirror up to date")]
 
     return mirror_steps + [
         steps.Git(name="checkout-base", repourl=repo_url, mode="full", method="fresh",
-                  reference=mirror),
+                  reference=mirror,
+                  description="Checking out base",
+                  descriptionDone="Checked out base"),
         steps.ShellCommand(
             name="fetch-pr", command=fetch_pr_command,
-            doStepIf=_is_pr_build, haltOnFailure=True),
+            doStepIf=_is_pr_build, hideStepIf=_hide_if_skipped, haltOnFailure=True,
+            description=util.Interpolate("Fetching PR #%(prop:pr_number)s"),
+            descriptionDone=util.Interpolate("Fetched PR #%(prop:pr_number)s")),
         steps.SetPropertyFromCommand(
             name="resolve-pr-head", command=["git", "rev-parse", "FETCH_HEAD"],
             property="pr_head_sha",
-            doStepIf=_needs_pr_head_resolve, haltOnFailure=True),
+            doStepIf=_needs_pr_head_resolve, hideStepIf=_hide_if_skipped, haltOnFailure=True,
+            description="Resolving PR head",
+            descriptionDone=util.Interpolate("PR head is %(prop:pr_head_sha)s")),
         steps.ShellCommand(
             name="merge-pr", command=merge_pr_command,
-            doStepIf=_is_pr_build, haltOnFailure=True),
+            doStepIf=_is_pr_build, hideStepIf=_hide_if_skipped, haltOnFailure=True,
+            description=util.Interpolate("Merging PR #%(prop:pr_number)s"),
+            descriptionDone=util.Interpolate("Merged PR #%(prop:pr_number)s")),
     ]
 
 
-@renderer
-def _compute_compile_jobs_command(props):
-    """Build the `riot_ci/jobs.py` command line from build properties.
+def _jobs_py_command(select_only):
+    """Build a renderer for the `riot_ci/jobs.py` command line.
 
-    Reads the `boards`, `apps`, `full_build` and `quick_build` build
-    properties (all optional) and translates each of them into the matching
-    `jobs.py` flag. For PR builds, change detection diffs against the
-    checked-out base (`got_revision`); other builds skip change detection.
+    Translates the `boards`, `apps`, `full_build` and `quick_build` build
+    properties (all optional) into the matching `jobs.py` flags. For PR
+    builds, change detection diffs against the checked-out base
+    (`got_revision`); other builds skip change detection.
+
+    Args:
+        select_only: Pass `--select-only`, i.e. only decide which
+            applications and boards to build.
     """
-    cmd = ["python3", ".buildbot/riot_ci/jobs.py"]
-    boards = props.getProperty("boards")
-    if boards:
-        cmd += ["--boards", boards]
-    apps = props.getProperty("apps")
-    if apps:
-        cmd += ["--apps", apps]
-    if props.getProperty("full_build"):
-        cmd.append("--full-build")
-    if props.getProperty("quick_build"):
-        cmd.append("--quick-build")
-    if props.getProperty("pr_number"):
-        cmd += ["--upstream-commit", props.getProperty("got_revision")]
-    return cmd
+
+    @renderer
+    def command(props):
+        cmd = ["python3", ".buildbot/riot_ci/jobs.py"]
+        if select_only:
+            cmd.append("--select-only")
+        boards = props.getProperty("boards")
+        if boards:
+            cmd += ["--boards", boards]
+        apps = props.getProperty("apps")
+        if apps:
+            cmd += ["--apps", apps]
+        if props.getProperty("full_build"):
+            cmd.append("--full-build")
+        if props.getProperty("quick_build"):
+            cmd.append("--quick-build")
+        if props.getProperty("pr_number"):
+            cmd += ["--upstream-commit", props.getProperty("got_revision")]
+        return cmd
+
+    return command
+
+
+class SelectBuilds(steps.SetPropertyFromCommand):
+    """Decides which applications to build, and for which boards.
+
+    Runs `riot_ci/jobs.py --select-only` on the worker and stores its JSON
+    output (`{"apps": [...], "boards": [...] or null}`) as the `selection`
+    build property, for `TriggerJobLists` to consume.
+    """
+
+    name = "select-builds"
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("command", _jobs_py_command(select_only=True))
+        kwargs.setdefault("property", "selection")
+        kwargs.setdefault("haltOnFailure", True)
+        kwargs.setdefault("description", "Selecting applications and boards")
+        super().__init__(**kwargs)
+
+    def getResultSummary(self):
+        if self.results != SUCCESS:
+            return {"step": f"{join_list(self.description)} ({statusToString(self.results)})"}
+        selection = _json_property(self, "selection")
+        apps = len(selection.get("apps", []))
+        if not apps:
+            return {"step": "Nothing to build"}
+        boards = selection.get("boards")
+        boards = _plural(len(boards), "board") if boards else "all supported boards"
+        return {"step": f"Selected {_plural(apps, 'application')} for {boards}"}
+
+
+class _CountingTrigger(Trigger):
+    """A Trigger whose summary counts the triggered builds instead of listing
+    the scheduler once per build ("triggered trigger-compile, trigger-compile, ...").
+    """
+
+    what = "build"
+
+    def getSchedulersAndProperties(self):
+        triggers = self.getTriggers()
+        self.triggered = len(triggers)
+        return triggers
+
+    def getResultSummary(self):
+        summary = f"Triggered {_plural(getattr(self, 'triggered', 0), self.what)}"
+        if self.results != SUCCESS:
+            summary += f" ({statusToString(self.results)})"
+        return {"step": summary}
+
+
+class TriggerJobLists(_CountingTrigger):
+    """Triggers one `list-jobs` build per batch of selected applications.
+
+    Reads the `selection` property set by `SelectBuilds` and splits its
+    applications into batches of `apps_per_batch`. Each batch becomes a
+    `list-jobs` build that lists and triggers the compile jobs of its
+    applications, for the selected boards. The base revision is passed on
+    through the sourcestamp (`updateSourceStamp`), the PR (if any) through
+    properties.
+
+    Args:
+        apps_per_batch: Number of applications per `list-jobs` build.
+    """
+
+    what = "list-jobs build"
+
+    def __init__(self, apps_per_batch, **kwargs):
+        self.apps_per_batch = apps_per_batch
+        kwargs.setdefault("description", "Handing out application batches")
+        super().__init__(**kwargs)
+
+    def getTriggers(self):
+        selection = _json_property(self, "selection")
+        apps = selection.get("apps", [])
+        boards = " ".join(selection.get("boards") or [])
+        batches = [apps[i:i + self.apps_per_batch]
+                   for i in range(0, len(apps), self.apps_per_batch)]
+        return [
+            {
+                "sched_name": "trigger-list-jobs",
+                "props_to_set": {
+                    "apps": " ".join(batch),
+                    # empty: all boards each application supports
+                    "boards": boards,
+                    # the selection is final; don't run change detection again
+                    "full_build": True,
+                    **_pr_properties(self),
+                },
+                "unimportant": False,
+            }
+            for batch in batches
+        ]
 
 
 class ComputeCompileJobs(steps.SetPropertyFromCommand):
-    """Runs `riot_ci/jobs.py` on the worker and stores its JSON output as
-    the `compile_jobs` build property, for `TriggerCompileJobs` to consume.
+    """Lists the compile jobs of the applications in the `apps` property.
 
+    Runs `riot_ci/jobs.py` on the worker and stores its JSON output as the
+    `compile_jobs` build property, for `TriggerCompileJobs` to consume.
     Fails the build, without triggering anything, if `jobs.py` couldn't
     query an application (e.g. a broken Makefile).
     """
@@ -148,13 +300,20 @@ class ComputeCompileJobs(steps.SetPropertyFromCommand):
     name = "compute-compile-jobs"
 
     def __init__(self, **kwargs):
-        kwargs.setdefault("command", _compute_compile_jobs_command)
+        kwargs.setdefault("command", _jobs_py_command(select_only=False))
         kwargs.setdefault("property", "compile_jobs")
         kwargs.setdefault("haltOnFailure", True)
+        kwargs.setdefault("description", "Listing compile jobs")
         super().__init__(**kwargs)
 
+    def getResultSummary(self):
+        if self.results != SUCCESS:
+            return {"step": f"{join_list(self.description)} ({statusToString(self.results)})"}
+        jobs = len(_json_property(self, "compile_jobs").get("jobs", []))
+        return {"step": f"Listed {_plural(jobs, 'compile job')}"}
 
-class TriggerCompileJobs(Trigger):
+
+class TriggerCompileJobs(_CountingTrigger):
     """Triggers one `compile` build per job in the `compile_jobs` property.
 
     `compile_jobs` is expected to hold the JSON produced by
@@ -166,20 +325,14 @@ class TriggerCompileJobs(Trigger):
     so all triggered builds check out the same base as this build.
     """
 
-    def getSchedulersAndProperties(self):
-        raw = self.getProperty("compile_jobs") or "{}"
-        try:
-            data = json.loads(raw) if isinstance(raw, str) else raw
-        except json.JSONDecodeError:
-            data = {}
+    what = "compile build"
 
-        pr_props = {}
-        if self.getProperty("pr_number"):
-            pr_props = {
-                "pr_number": self.getProperty("pr_number"),
-                "pr_head_sha": self.getProperty("pr_head_sha"),
-            }
+    def __init__(self, **kwargs):
+        kwargs.setdefault("description", "Triggering compile builds")
+        super().__init__(**kwargs)
 
+    def getTriggers(self):
+        jobs = _json_property(self, "compile_jobs").get("jobs", [])
         return [
             {
                 "sched_name": "trigger-compile",
@@ -187,9 +340,9 @@ class TriggerCompileJobs(Trigger):
                     "appdir": job["appdir"],
                     "board": job["board"],
                     "toolchain": job["toolchain"],
-                    **pr_props,
+                    **_pr_properties(self),
                 },
                 "unimportant": False,
             }
-            for job in data.get("jobs", [])
+            for job in jobs
         ]
