@@ -1,1 +1,5 @@
 buildbot>=4.3,<5
+buildbot-www>=4.3,<5
+buildbot-waterfall-view>=4.3,<5
+buildbot-console-view>=4.3,<5
+buildbot-grid-view>=4.3,<5

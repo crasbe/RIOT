@@ -251,7 +251,10 @@ def main(argv=None):
     )
     json.dump(result, sys.stdout)
     print()
+    for error in result["errors"]:
+        print(f"error: {error}", file=sys.stderr)
+    return 1 if result["errors"] else 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
