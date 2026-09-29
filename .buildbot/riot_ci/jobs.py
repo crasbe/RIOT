@@ -50,8 +50,8 @@ TEST_BOARDS_LLVM_COMPILE = [
 ]
 
 
-def _run(cmd, cwd):
-    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+def _run(cmd, cwd, env=None):
+    return subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True)
 
 
 def get_apps(riotbase, apps_filter=None):
@@ -89,9 +89,14 @@ def get_supported_boards(riotbase, appdir, boards_filter=None):
         A list of board names, or None if `make info-boards-supported`
         failed for this application (e.g. a broken Makefile).
     """
+    env = None
+    if boards_filter:
+        # Only evaluate these boards instead of all ~300; much faster.
+        env = dict(os.environ, BOARDS=" ".join(boards_filter))
     result = _run(
         ["make", "--no-print-directory", "-j2", "info-boards-supported"],
         cwd=os.path.join(riotbase, appdir),
+        env=env,
     )
     if result.returncode != 0:
         return None
@@ -185,6 +190,8 @@ def compute_compile_jobs(riotbase, boards=None, apps=None, full_build=False,
                           quick_build=False, upstream_commit=None):
     """Compute the full compile-job matrix for a RIOT checkout.
 
+    Reports progress on stderr, one line per application.
+
     Args:
         riotbase: Path to the RIOT checkout.
         boards: Space-free iterable of board names to restrict the build to.
@@ -217,14 +224,19 @@ def compute_compile_jobs(riotbase, boards=None, apps=None, full_build=False,
 
     board_filter = boards or boards_changed or (QUICKBUILD_BOARDS if quick_build else None)
 
+    app_list = get_apps(riotbase, apps_filter=apps)
+    total = len(app_list)
+
     jobs = []
     errors = []
-    for appdir in get_apps(riotbase, apps_filter=apps):
+    for done, appdir in enumerate(app_list, 1):
         pairs = get_app_board_toolchain_pairs(riotbase, appdir, board_filter)
         if pairs is None:
             errors.append(f"get_supported_boards failed in {appdir}")
+            print(f"[{done}/{total}] {appdir}: FAILED", file=sys.stderr, flush=True)
             continue
         jobs.extend(pairs)
+        print(f"[{done}/{total}] {appdir}: {len(pairs)} jobs", file=sys.stderr, flush=True)
     return {"jobs": jobs, "errors": errors}
 
 
