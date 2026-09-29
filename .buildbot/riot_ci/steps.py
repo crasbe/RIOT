@@ -11,15 +11,21 @@ workers:
    (`ComputeCompileJobs`) and triggers a "compile" build for each
    (`TriggerCompileJobs`). Compile builds therefore start while other
    batches are still being listed.
+3. The coordinator waits for all those compile builds
+   (`WaitForCompileBuilds`), so its result covers the whole job matrix.
 """
 import json
 from urllib.parse import urlsplit
 
+from buildbot.data.resultspec import Filter
 from buildbot.plugins import steps, util
+from buildbot.process.buildstep import BuildStep
 from buildbot.process.properties import renderer
-from buildbot.process.results import ALL_RESULTS, SKIPPED, SUCCESS, statusToString
+from buildbot.process.results import (ALL_RESULTS, CANCELLED, FAILURE, SKIPPED, SUCCESS,
+                                      WARNINGS, statusToString, worst_status)
 from buildbot.steps.trigger import Trigger
 from buildbot.util import join_list
+from twisted.internet import defer
 
 # Where the buildbot-worker image (riotdocker/buildbot-worker/) keeps
 # git-cache's repository mirrors: on its persistent /cache volume.
@@ -269,6 +275,12 @@ class SelectBuilds(steps.SetPropertyFromCommand):
         return {"step": f"Selected {_plural(apps, 'application')} for {boards}"}
 
 
+def _result_counts(results):
+    """Summarize a list of build results, e.g. "309 success, 3 failure"."""
+    return ", ".join(f"{results.count(r)} {statusToString(r, results.count(r))}"
+                     for r in ALL_RESULTS if results.count(r))
+
+
 class _CountingTrigger(Trigger):
     """A Trigger whose summary counts the triggered builds instead of listing
     the scheduler once per build ("triggered trigger-compile, trigger-compile, ...").
@@ -287,11 +299,8 @@ class _CountingTrigger(Trigger):
         summary = f"Triggered {_plural(self.triggered, self.what)}"
         # Results of the triggered builds that finished so far (only
         # collected with waitForFinish=True); Trigger's own bookkeeping.
-        finished = self._result_list
-        counts = [f"{finished.count(r)} {statusToString(r, finished.count(r))}"
-                  for r in ALL_RESULTS if finished.count(r)]
-        if counts:
-            summary += f" ({', '.join(counts)})"
+        if self._result_list:
+            summary += f" ({_result_counts(self._result_list)})"
         return {"step": summary}
 
     def getResultSummary(self):
@@ -407,3 +416,119 @@ class TriggerCompileJobs(_CountingTrigger):
             }
             for job in jobs
         ]
+
+
+class WaitForCompileBuilds(BuildStep):
+    """Waits for the compile builds of this build's list-jobs builds.
+
+    `TriggerCompileJobs` doesn't wait for its compile builds, so that the
+    list-jobs builds free their workers right away. This master-side step,
+    run by the coordinator after its list-jobs builds have finished, waits
+    for all compile builds they triggered instead, reporting the progress in
+    its summary. Its result is the worst result of those compile builds
+    (exceptions and cancelled builds count as failures), skipped if there
+    were none.
+
+    The builds are found through the buildsets' `parent_buildid`: the
+    coordinator's buildsets are the list-jobs builds' ones, theirs are the
+    compile builds' ones.
+
+    Args:
+        poll_interval: Seconds between checks for finished compile builds.
+    """
+
+    name = "wait-for-compile-builds"
+    what = "compile build"
+
+    def __init__(self, poll_interval=15, **kwargs):
+        self.poll_interval = poll_interval
+        kwargs.setdefault("description", "Waiting for compile builds")
+        kwargs.setdefault("hideStepIf", _hide_if_skipped)
+        # Compile builds with warnings make the coordinator show warnings.
+        kwargs.setdefault("warnOnWarnings", True)
+        super().__init__(**kwargs)
+        self.total = None
+        self.finished = []
+        self._wakeup = None
+
+    async def _child_buildsets(self, parent_buildids, **filters):
+        # Both lists can get long; keep each query below SQLite's limit on
+        # bound parameters.
+        buildsets = []
+        for start in range(0, len(parent_buildids), 500):
+            ids = parent_buildids[start:start + 500]
+            buildsets += await self.master.data.get(
+                ("buildsets",),
+                filters=[Filter("parent_buildid", "eq", ids)]
+                + [Filter(field, "eq", [value]) for field, value in filters.items()])
+        return buildsets
+
+    async def _buildset_builds(self, bsid):
+        buildids = []
+        requests = await self.master.data.get(
+            ("buildrequests",), filters=[Filter("buildsetid", "eq", [bsid])])
+        for request in requests:
+            builds = await self.master.data.get(
+                ("builds",), filters=[Filter("buildrequestid", "eq", [request["buildrequestid"]])])
+            buildids += [b["buildid"] for b in builds]
+        return buildids
+
+    async def _sleep(self):
+        self._wakeup = defer.Deferred()
+        call = self.master.reactor.callLater(self.poll_interval, self._wakeup.callback, None)
+        try:
+            await self._wakeup
+        finally:
+            if call.active():
+                call.cancel()
+            self._wakeup = None
+
+    def interrupt(self, reason):
+        d = super().interrupt(reason)
+        if self._wakeup is not None and not self._wakeup.called:
+            self._wakeup.callback(None)
+        return d
+
+    async def run(self):
+        list_jobs_builds = []
+        for buildset in await self._child_buildsets([self.build.buildid]):
+            list_jobs_builds += await self._buildset_builds(buildset["bsid"])
+        # The list-jobs builds have finished, so no compile builds are added
+        # any more.
+        pending = {bs["bsid"] for bs in await self._child_buildsets(list_jobs_builds)}
+        self.total = len(pending)
+        if not pending:
+            return SKIPPED
+        while True:
+            still_pending = {bs["bsid"] for bs in
+                             await self._child_buildsets(list_jobs_builds, complete=False)}
+            done = sorted(pending - still_pending)
+            for start in range(0, len(done), 500):
+                buildsets = await self.master.data.get(
+                    ("buildsets",), filters=[Filter("bsid", "eq", done[start:start + 500])])
+                self.finished += [bs["results"] for bs in buildsets
+                                  if bs["results"] is not None]
+            pending = still_pending
+            self.updateSummary()
+            if not pending:
+                break
+            await self._sleep()
+            if self.stopped:
+                return CANCELLED
+        result = SUCCESS
+        for r in self.finished:
+            result = worst_status(result, r if r in (SUCCESS, WARNINGS, SKIPPED, FAILURE) else FAILURE)
+        return result
+
+    def getCurrentSummary(self):
+        if self.total is None:
+            return {"step": join_list(self.description)}
+        summary = f"{len(self.finished)} of {_plural(self.total, self.what)} done"
+        if self.finished:
+            summary += f" ({_result_counts(self.finished)})"
+        return {"step": summary}
+
+    def getResultSummary(self):
+        if self.results == SKIPPED:
+            return {"step": "No compile builds"}
+        return self.getCurrentSummary()

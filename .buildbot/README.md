@@ -43,7 +43,9 @@ A CI run starts with a `coordinator` build and fans out over the workers:
    applications to build and for which boards (`jobs.py --select-only`:
    change detection, quick-build board selection), and triggers one
    `list-jobs` build per batch of applications (`BUILDBOT_APPS_PER_BATCH`,
-   default 25). It waits for them, so it fails if any batch does.
+   default 25). It then waits for these and for all compile builds they
+   trigger, showing the progress ("312 of 340 compile builds done (…)").
+   Its result is the worst of them, so it covers the whole CI run.
 2. `list-jobs`: queries its applications for their supported
    (board, toolchain) combinations — the slow part, now spread over the
    workers — and triggers one `compile` build per combination. Compile
