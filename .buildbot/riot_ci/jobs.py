@@ -91,7 +91,7 @@ def get_supported_boards(riotbase, appdir, boards_filter=None):
     """
     env = None
     if boards_filter:
-        # Only evaluate these boards instead of all ~300; much faster.
+        # Only evaluate the given boards instead of all, much faster.
         env = dict(os.environ, BOARDS=" ".join(boards_filter))
     result = _run(
         ["make", "--no-print-directory", "-j2", "info-boards-supported"],
