@@ -51,6 +51,9 @@ TEST_BOARDS_LLVM_COMPILE = [
 
 
 def _run(cmd, cwd, env=None):
+    # RIOT_CI_BUILD=1 like the compile builds: applications' Makefile.ci may
+    # restrict the boards CI builds for (e.g. BOARDS_SUPPORTED).
+    env = dict(env if env is not None else os.environ, RIOT_CI_BUILD="1")
     return subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True)
 
 
