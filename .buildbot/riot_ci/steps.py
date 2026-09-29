@@ -174,6 +174,36 @@ def checkout_steps(repo_url):
     ]
 
 
+def _pr_prefix(props):
+    """"PR #123: " for PR builds, "" otherwise; prepended to build labels."""
+    pr_number = props.getProperty("pr_number")
+    return f"PR #{pr_number}: " if pr_number else ""
+
+
+@renderer
+def _coordinator_label(props):
+    branch = props.getProperty("branch") or ""
+    pr_number = props.getProperty("pr_number")
+    label = f"PR #{pr_number} → {branch}" if pr_number else branch
+    kinds = []
+    if props.getProperty("full_build"):
+        kinds.append("Full Build")
+    if props.getProperty("quick_build"):
+        kinds.append("Quickbuild")
+    return " · ".join([label] + kinds)
+
+
+def coordinator_label_step():
+    """Build a step that sets the coordinator's `label` property, which the
+    web interface shows on build badges, e.g. "PR #123 → master · Quickbuild".
+
+    Triggered builds get their `label` from the step that triggers them.
+    """
+    return steps.SetProperty(
+        name="set-label", property="label", value=_coordinator_label,
+        hideStepIf=lambda results, step: True)
+
+
 def _jobs_py_command(select_only):
     """Build a renderer for the `riot_ci/jobs.py` command line.
 
@@ -293,12 +323,18 @@ class TriggerJobLists(_CountingTrigger):
         selection = _json_property(self, "selection")
         apps = selection.get("apps", [])
         boards = " ".join(selection.get("boards") or [])
-        batches = [apps[i:i + self.apps_per_batch]
-                   for i in range(0, len(apps), self.apps_per_batch)]
-        return [
-            {
+        prefix = _pr_prefix(self)
+        triggers = []
+        for start in range(0, len(apps), self.apps_per_batch):
+            batch = apps[start:start + self.apps_per_batch]
+            if len(batch) == 1:
+                which = f"application {start + 1}"
+            else:
+                which = f"applications {start + 1}–{start + len(batch)}"
+            triggers.append({
                 "sched_name": "trigger-list-jobs",
                 "props_to_set": {
+                    "label": f"{prefix}{which} of {len(apps)}",
                     "apps": " ".join(batch),
                     # empty: all boards each application supports
                     "boards": boards,
@@ -307,9 +343,8 @@ class TriggerJobLists(_CountingTrigger):
                     **_pr_properties(self),
                 },
                 "unimportant": False,
-            }
-            for batch in batches
-        ]
+            })
+        return triggers
 
 
 class ComputeCompileJobs(steps.SetPropertyFromCommand):
@@ -357,10 +392,12 @@ class TriggerCompileJobs(_CountingTrigger):
 
     def getTriggers(self):
         jobs = _json_property(self, "compile_jobs").get("jobs", [])
+        prefix = _pr_prefix(self)
         return [
             {
                 "sched_name": "trigger-compile",
                 "props_to_set": {
+                    "label": f"{prefix}{job['appdir']} {job['board']}:{job['toolchain']}",
                     "appdir": job["appdir"],
                     "board": job["board"],
                     "toolchain": job["toolchain"],
